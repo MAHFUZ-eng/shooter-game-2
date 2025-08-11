@@ -27,14 +27,11 @@ let hero = {
   height: 50,
   speed: 7
 };
-
-let heroHealth = 5;  // Life count
-
 let bullets = [];
 let enemies = [];
-let enemyBullets = []; // Enemy bullets array
-
+let enemyBullets = [];
 let score = 0;
+let heroLife = 5;  // Hero takes 5 shots before dying
 let gameRunning = false;
 let gamePaused = false;
 let gameOver = false;
@@ -57,7 +54,9 @@ const gameOverOverlay = document.createElement("div");
 gameOverOverlay.id = "gameOverOverlay";
 gameOverOverlay.classList.add("hidden");
 gameOverOverlay.innerHTML = 
-  `Game Over!<br><button id="newGameBtn">New Game</button>`;
+  `Game Over!<br>
+  <button id="newGameBtn">New Game</button>
+  `;
 document.body.appendChild(gameOverOverlay);
 
 // Add listener to the new game button
@@ -74,7 +73,7 @@ function resetGame() {
   enemies = [];
   enemyBullets = [];
   score = 0;
-  heroHealth = 5;
+  heroLife = 5;
   gameRunning = true;
   gamePaused = false;
   gameOver = false;
@@ -94,14 +93,20 @@ function startEnemySpawn() {
   if (enemySpawnTimer) clearInterval(enemySpawnTimer);
   enemySpawnTimer = setInterval(() => {
     if (gameRunning && !gamePaused && !gameOver) {
-      enemies.push({
+      let enemy = {
         x: Math.random() * (canvas.width - 50),
         y: -50,
         width: 50,
         height: 50,
         speed: 3,
-        shootTimer: 0  // Timer to shoot bullets
-      });
+        zigzagDir: 1,          // 1 means move right, -1 means move left
+        zigzagSpeed: 2,        // horizontal zigzag speed
+        zigzagLimit: 100,      // max horizontal distance from start x
+        startX: 0,             // will set below
+        shootCooldown: 0       // cooldown timer for shooting
+      };
+      enemy.startX = enemy.x;
+      enemies.push(enemy);
     }
   }, 2000);
 }
@@ -111,7 +116,7 @@ function stopEnemySpawn() {
   if (enemySpawnTimer) clearInterval(enemySpawnTimer);
 }
 
-// Fire bullet function (hero)
+// Fire bullet function
 function fireBullet() {
   if (!gameRunning || gamePaused || gameOver) return;
   bullets.push({
@@ -251,32 +256,6 @@ canvas.addEventListener("touchend", e => {
   touchDirection = null;
 });
 
-// Draw health bar above hero
-function drawHealthBar() {
-  const barWidth = hero.width;
-  const barHeight = 8;
-  const x = hero.x;
-  const y = hero.y - barHeight - 5; // 5 px above hero
-
-  // Background bar (dark gray)
-  ctx.fillStyle = "rgba(50, 50, 50, 0.8)";
-  ctx.fillRect(x, y, barWidth, barHeight);
-
-  // Health bar (green to red gradient)
-  const healthWidth = (heroHealth / 5) * barWidth;
-  const gradient = ctx.createLinearGradient(x, y, x + barWidth, y);
-  gradient.addColorStop(0, "#0f0");
-  gradient.addColorStop(0.5, "#ff0");
-  gradient.addColorStop(1, "#f00");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(x, y, healthWidth, barHeight);
-
-  // Border
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, barWidth, barHeight);
-}
-
 // Game loop
 function gameLoop() {
   if (!gameRunning) {
@@ -305,10 +284,17 @@ function gameLoop() {
   // Draw hero
   ctx.drawImage(heroImg, hero.x, hero.y, hero.width, hero.height);
 
-  // Draw health bar above hero
-  drawHealthBar();
+  // Draw hero life bar above hero
+  const lifeBarWidth = 50;
+  const lifeBarHeight = 7;
+  ctx.fillStyle = "red";
+  ctx.fillRect(hero.x, hero.y - 15, lifeBarWidth, lifeBarHeight);
+  ctx.fillStyle = "lime";
+  ctx.fillRect(hero.x, hero.y - 15, (heroLife / 5) * lifeBarWidth, lifeBarHeight);
+  ctx.strokeStyle = "white";
+  ctx.strokeRect(hero.x, hero.y - 15, lifeBarWidth, lifeBarHeight);
 
-  // Move and draw hero bullets
+  // Move and draw bullets (hero bullets)
   for (let i = bullets.length - 1; i >= 0; i--) {
     const bullet = bullets[i];
     bullet.y -= bullet.speed;
@@ -319,15 +305,23 @@ function gameLoop() {
     ctx.drawImage(bulletImg, bullet.x, bullet.y, bullet.width, bullet.height);
   }
 
-  // Move and draw enemies & let them shoot bullets
+  // Move and draw enemies
   for (let e = enemies.length - 1; e >= 0; e--) {
     const enemy = enemies[e];
-    enemy.y += enemy.speed;
-    ctx.drawImage(enemyImg, enemy.x, enemy.y, enemy.width, enemy.height);
+    
+    // Zigzag horizontal movement
+    enemy.x += enemy.zigzagDir * enemy.zigzagSpeed;
+    if (enemy.x > enemy.startX + enemy.zigzagLimit) enemy.zigzagDir = -1;
+    else if (enemy.x < enemy.startX - enemy.zigzagLimit) enemy.zigzagDir = 1;
 
-    // Enemy shoots bullet every ~2 seconds
-    enemy.shootTimer = (enemy.shootTimer || 0) + 1;
-    if (enemy.shootTimer > 120) { // approx 2 sec at 60fps
+    // Move enemy downward
+    enemy.y += enemy.speed;
+
+    // Enemy shooting cooldown logic
+    if (enemy.shootCooldown > 0) enemy.shootCooldown--;
+
+    // Shoot bullet toward hero every ~120 frames
+    if (enemy.shootCooldown === 0 && enemy.y > 0 && enemy.y < canvas.height) {
       enemyBullets.push({
         x: enemy.x + enemy.width / 2 - 5,
         y: enemy.y + enemy.height,
@@ -335,8 +329,10 @@ function gameLoop() {
         height: 20,
         speed: 6
       });
-      enemy.shootTimer = 0;
+      enemy.shootCooldown = 120; // cooldown frames until next shot
     }
+
+    ctx.drawImage(enemyImg, enemy.x, enemy.y, enemy.width, enemy.height);
 
     // Game over if enemy reaches bottom (missed)
     if (enemy.y > canvas.height) {
@@ -349,27 +345,29 @@ function gameLoop() {
     }
   }
 
-  // Move and draw enemy bullets
+  // Move and draw enemy bullets, check collision with hero
   for (let i = enemyBullets.length - 1; i >= 0; i--) {
-    const eb = enemyBullets[i];
-    eb.y += eb.speed;
-    if (eb.y > canvas.height) {
+    const eBullet = enemyBullets[i];
+    eBullet.y += eBullet.speed;
+
+    if (eBullet.y > canvas.height) {
       enemyBullets.splice(i, 1);
       continue;
     }
-    ctx.fillStyle = "red";
-    ctx.fillRect(eb.x, eb.y, eb.width, eb.height);
 
-    // Check collision with hero
+    ctx.fillStyle = "red";
+    ctx.fillRect(eBullet.x, eBullet.y, eBullet.width, eBullet.height);
+
+    // Hero collision
     if (
-      eb.x < hero.x + hero.width &&
-      eb.x + eb.width > hero.x &&
-      eb.y < hero.y + hero.height &&
-      eb.y + eb.height > hero.y
+      eBullet.x < hero.x + hero.width &&
+      eBullet.x + eBullet.width > hero.x &&
+      eBullet.y < hero.y + hero.height &&
+      eBullet.y + eBullet.height > hero.y
     ) {
       enemyBullets.splice(i, 1);
-      heroHealth--;
-      if (heroHealth <= 0) {
+      heroLife -= 1;
+      if (heroLife <= 0) {
         gameOver = true;
         gameRunning = false;
         gameOverOverlay.classList.remove("hidden");
@@ -380,7 +378,7 @@ function gameLoop() {
     }
   }
 
-  // Collision detection (hero bullets hitting enemies)
+  // Collision detection hero bullet hits enemy
   for (let e = enemies.length - 1; e >= 0; e--) {
     for (let b = bullets.length - 1; b >= 0; b--) {
       const enemy = enemies[e];
@@ -393,7 +391,7 @@ function gameLoop() {
       ) {
         explosionSound.currentTime = 0;
         explosionSound.play();
-        enemies.splice(e, 1);
+        enemies.splice(e, 1);  // enemy dies in one shot
         bullets.splice(b, 1);
         score++;
         scoreSpan.textContent = `Score: ${score}`;
