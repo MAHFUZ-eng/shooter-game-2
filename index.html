@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shooter Game</title>
+<link rel="stylesheet" href="CSS/style.css" />
+</head>
+<body>
+  <div id="controls">
+    <button id="startBtn">Start Game</button>
+    <button id="pauseBtn">Pause</button>
+    <button id="fireBtn">Fire</button>
+    <button id="leftBtn" class="mobile-btn">◀</button>
+    <button id="rightBtn" class="mobile-btn">▶</button>
+    <span id="score">Score: 0</span>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Sounds -->
+  <audio id="fireSound" src="bullet.mp3" preload="auto"></audio>
+  <audio id="explosionSound" src="ex.mp3" preload="auto"></audio>
+  <audio id="bgMusic" src="bg.mp3" preload="auto" loop></audio>
+
+  <script src="JS/javascript.js"></script>
+</body>
+</html>
